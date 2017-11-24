@@ -1,6 +1,6 @@
 pragma solidity ^0.4.17;
 
-import "./Token/Token.sol";
+import "./Token.sol";
 import "./lib/ECVerify.sol";
 
 /// @title Raiden MicroTransfer Channels Contract.
@@ -13,6 +13,15 @@ contract RaidenMicroTransferChannels {
     address public owner;
     address public token_address;
     uint8 public challenge_period;
+
+    // Contract semantic version
+    string public constant version = '1.0.0';
+
+    // Address of the latest deployed version of the contract. This is set
+    // by the owner during a new contract deployment for all outdated contracts.
+    // Outdated contracts can still be used.
+    address public latest_version_address;
+
     string constant prefix = "\x19Ethereum Signed Message:\n";
 
     Token token;
@@ -37,6 +46,11 @@ contract RaidenMicroTransferChannels {
 
     modifier isToken() {
         require(msg.sender == token_address);
+        _;
+    }
+
+    modifier isOwner() {
+        require(msg.sender == owner);
         _;
     }
 
@@ -76,7 +90,7 @@ contract RaidenMicroTransferChannels {
     /// @dev Constructor for creating the Raiden microtransfer channels contract.
     /// @param _token The address of the Token used by the channels.
     /// @param _challenge_period A fixed number of blocks representing the challenge period after a sender requests the closing of the channel without the receiver's signature.
-    function RaidenMicroTransferChannels(address _token, uint8 _challenge_period) {
+    function RaidenMicroTransferChannels(address _token, uint8 _challenge_period) public {
         require(_token != 0x0);
         require(addressHasCode(_token));
         require(_challenge_period > 0);
@@ -88,10 +102,16 @@ contract RaidenMicroTransferChannels {
         challenge_period = _challenge_period;
     }
 
+    /// @dev Sets the address for the latest contract version
+    /// @param _latest_version_address The address for the latest contract version.
+    function setLatestVersionAddress(address _latest_version_address) public isOwner {
+        require(addressHasCode(_latest_version_address));
+        latest_version_address = _latest_version_address;
+    }
+
     /*
      *  Public helper functions (constant)
      */
-
     /// @dev Returns the unique channel identifier used in the contract.
     /// @param _sender The address that sends tokens.
     /// @param _receiver The address that receives tokens.
@@ -102,10 +122,10 @@ contract RaidenMicroTransferChannels {
         address _receiver,
         uint32 _open_block_number)
         public
-        constant
+        pure
         returns (bytes32 data)
     {
-        return sha3(_sender, _receiver, _open_block_number);
+        return keccak256(_sender, _receiver, _open_block_number);
     }
 
     /// @dev Returns a hash of the balance message needed to be signed by the sender.
@@ -118,7 +138,7 @@ contract RaidenMicroTransferChannels {
         uint32 _open_block_number,
         uint192 _balance)
         public
-        constant
+        pure
         returns (string)
     {
         string memory str = concat("Receiver: 0x", addressToString(_receiver));
@@ -162,7 +182,7 @@ contract RaidenMicroTransferChannels {
 
 
         // Hash the prefixed message string
-        bytes32 prefixed_message_hash = sha3(prefixed_message);
+        bytes32 prefixed_message_hash = keccak256(prefixed_message);
 
         // Derive address from signature
         address signer = ECVerify.ecverify(prefixed_message_hash, _balance_msg_sig);
@@ -403,7 +423,7 @@ contract RaidenMicroTransferChannels {
         private
     {
         bytes32 key = getKey(_sender, _receiver, _open_block_number);
-        Channel channel = channels[key];
+        Channel memory channel = channels[key];
 
         require(channel.open_block_number != 0);
         require(_balance <= channel.deposit);
@@ -439,7 +459,7 @@ contract RaidenMicroTransferChannels {
     /// @return The maximum between the two provided numbers.
     function max(uint192 a, uint192 b)
         internal
-        constant
+        pure
         returns (uint)
     {
         if (a > b) {
@@ -455,7 +475,7 @@ contract RaidenMicroTransferChannels {
     /// @return The minimum between the two provided numbers.
     function min(uint192 a, uint192 b)
         internal
-        constant
+        pure
         returns (uint)
     {
         if (a < b) {
@@ -471,7 +491,7 @@ contract RaidenMicroTransferChannels {
     function addressFromData (
         bytes b)
         internal
-        constant
+        pure
         returns (address)
     {
         bytes20 addr;
@@ -489,7 +509,7 @@ contract RaidenMicroTransferChannels {
     function blockNumberFromData(
         bytes b)
         internal
-        constant
+        pure
         returns (uint32)
     {
         bytes4 block_number;
@@ -524,6 +544,7 @@ contract RaidenMicroTransferChannels {
         uint src,
         uint len)
         private
+        pure
     {
         // Copy word-length chunks while possible
         for(; len >= 32; len -= 32) {
@@ -547,7 +568,7 @@ contract RaidenMicroTransferChannels {
         string _self,
         string _other)
         internal
-        constant
+        pure
         returns (string)
     {
         uint self_len = bytes(_self).length;
@@ -571,7 +592,7 @@ contract RaidenMicroTransferChannels {
     function uintToString(
         uint v)
         internal
-        constant
+        pure
         returns (string)
     {
         bytes32 ret;
@@ -602,10 +623,9 @@ contract RaidenMicroTransferChannels {
         return string(bytesStringTrimmed);
     }
 
-    function addressToString(
-        address x)
+    function addressToString(address x)
         internal
-        constant
+        pure
         returns (string)
     {
         bytes memory str = new bytes(40);
@@ -621,7 +641,7 @@ contract RaidenMicroTransferChannels {
 
     function char(byte b)
         internal
-        constant
+        pure
         returns (byte c)
     {
         if (b < 10) {
